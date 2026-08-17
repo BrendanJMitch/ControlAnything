@@ -1,54 +1,104 @@
 package com.brendan.controlanything.ui.discovery
 
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
+import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.brendan.controlanything.ui.theme.ControlAnythingTheme
+import kotlinx.coroutines.flow.collectLatest
 
 @Composable
 fun DiscoveryScreen(
     onDeviceReady: () -> Unit,
     modifier: Modifier = Modifier,
+    viewModel: DiscoveryViewModel = hiltViewModel(),
 ) {
-    // Temporary stand-in for DiscoveryViewModel until NSD/MQTT land in a later milestone -
-    // the debug button below drives the same state transitions the real flow will produce.
-    var state by remember { mutableStateOf<DiscoveryUiState>(DiscoveryUiState.Searching) }
+    val context = LocalContext.current
+    var hasLocalNetworkPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.ACCESS_LOCAL_NETWORK,
+            ) == PackageManager.PERMISSION_GRANTED
+        )
+    }
 
-    Box(modifier = modifier.fillMaxSize()) {
-        DiscoveryContent(state = state, modifier = Modifier.fillMaxSize())
-        TextButton(
-            onClick = {
-                state = when (state) {
-                    is DiscoveryUiState.Searching -> DiscoveryUiState.Connecting(label = "Rover 2")
-                    else -> {
-                        onDeviceReady()
-                        state
-                    }
-                }
-            },
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .padding(16.dp),
-        ) {
-            Text("Debug: advance")
+    val requestPermission = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted -> hasLocalNetworkPermission = granted }
+
+    LaunchedEffect(Unit) {
+        if (!hasLocalNetworkPermission) {
+            requestPermission.launch(Manifest.permission.ACCESS_LOCAL_NETWORK)
+        }
+    }
+
+    LaunchedEffect(hasLocalNetworkPermission) {
+        if (hasLocalNetworkPermission) {
+            viewModel.startDiscovery()
+        }
+    }
+
+    LaunchedEffect(viewModel) {
+        viewModel.navigateToDashboard.collectLatest { onDeviceReady() }
+    }
+
+    if (hasLocalNetworkPermission) {
+        val state by viewModel.uiState.collectAsStateWithLifecycle()
+        DiscoveryContent(state = state, modifier = modifier.fillMaxSize())
+    } else {
+        PermissionRequiredContent(
+            onRequestPermission = { requestPermission.launch(Manifest.permission.ACCESS_LOCAL_NETWORK) },
+            modifier = modifier.fillMaxSize(),
+        )
+    }
+}
+
+@Composable
+private fun PermissionRequiredContent(
+    onRequestPermission: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier.padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Text("Local network access needed", style = MaterialTheme.typography.titleMedium)
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "ControlAnything needs local network access to find and connect to your robot.",
+            style = MaterialTheme.typography.bodyMedium,
+            textAlign = TextAlign.Center,
+        )
+        Spacer(Modifier.height(16.dp))
+        Button(onClick = onRequestPermission) {
+            Text("Grant access")
         }
     }
 }
@@ -95,6 +145,14 @@ private fun DiscoveryContent(
                 )
             }
         }
+    }
+}
+
+@Preview(showBackground = true)
+@Composable
+private fun PermissionRequiredContentPreview() {
+    ControlAnythingTheme {
+        PermissionRequiredContent(onRequestPermission = {}, modifier = Modifier.fillMaxSize())
     }
 }
 
