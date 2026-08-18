@@ -4,7 +4,7 @@ import com.brendan.controlanything.domain.model.ControlDef
 import com.brendan.controlanything.domain.model.DeviceInfo
 import com.brendan.controlanything.domain.model.OutputDef
 
-/** Unrecognized widget_type values are dropped (with a log) rather than failing the whole parse. */
+/** Unrecognized widget types (or a topic list too short for what the widget needs) are dropped rather than failing the whole parse. */
 fun InfoMessage.toDeviceInfo(): DeviceInfo = DeviceInfo(
     deviceId = device_id,
     deviceName = device_name,
@@ -14,22 +14,22 @@ fun InfoMessage.toDeviceInfo(): DeviceInfo = DeviceInfo(
     outputs = outputs.mapNotNull { it.toOutputDef() },
 )
 
-private fun ControlJson.toControlDef(): ControlDef? = when (widget_type) {
-    "toggle" -> topic?.let { ControlDef.Toggle(it, display_name) }
-    "button" -> topic?.let { ControlDef.Button(it, display_name) }
-    "slider" -> topic?.let {
-        ControlDef.Slider(it, display_name, (min ?: 0.0).toFloat(), (max ?: 1.0).toFloat())
+private fun WidgetSpecJson.toControlDef(): ControlDef? = when (widget.type) {
+    "toggle" -> topic.getOrNull(0)?.let { ControlDef.Toggle(it, display_name) }
+    "button" -> topic.getOrNull(0)?.let { ControlDef.Button(it, display_name) }
+    "slider" -> topic.getOrNull(0)?.let {
+        ControlDef.Slider(it, display_name, (widget.min ?: 0.0).toFloat(), (widget.max ?: 1.0).toFloat())
     }
-    "joystick" -> if (topic_x != null && topic_y != null) {
-        ControlDef.Joystick(topic_x, topic_y, display_name)
-    } else {
-        null
+    "joystick" -> {
+        val topicX = topic.getOrNull(0)
+        val topicY = topic.getOrNull(1)
+        if (topicX != null && topicY != null) ControlDef.Joystick(topicX, topicY, display_name) else null
     }
     else -> null
 }
 
-private fun OutputJson.toOutputDef(): OutputDef? = when (widget_type) {
-    "numeric_readout" -> OutputDef.NumericReadout(topic, display_name)
-    "led_indicator" -> OutputDef.LedIndicator(topic, display_name)
+private fun WidgetSpecJson.toOutputDef(): OutputDef? = when (widget.type) {
+    "numeric_readout" -> topic.getOrNull(0)?.let { OutputDef.NumericReadout(it, display_name) }
+    "led_indicator" -> topic.getOrNull(0)?.let { OutputDef.LedIndicator(it, display_name) }
     else -> null
 }

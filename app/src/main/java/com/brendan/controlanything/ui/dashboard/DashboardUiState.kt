@@ -9,4 +9,5 @@ data class DashboardUiState(
     val columnCount: Int = DEFAULT_COLUMN_COUNT,
     val positions: List<PlacedWidget> = emptyList(),
     val outputValues: Map<String, MqttValue> = emptyMap(),
+    val controlValues: Map<String, MqttValue> = emptyMap(),
 )

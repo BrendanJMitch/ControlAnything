@@ -47,9 +47,12 @@ import com.brendan.controlanything.domain.model.MqttValue
 import com.brendan.controlanything.domain.model.OutputDef
 import com.brendan.controlanything.ui.dashboard.grid.DashboardGrid
 import com.brendan.controlanything.ui.dashboard.grid.gridPosition
+import com.brendan.controlanything.ui.dashboard.widgets.ButtonWidget
+import com.brendan.controlanything.ui.dashboard.widgets.JoystickWidget
 import com.brendan.controlanything.ui.dashboard.widgets.LedIndicatorWidget
 import com.brendan.controlanything.ui.dashboard.widgets.NumericReadoutWidget
-import com.brendan.controlanything.ui.dashboard.widgets.PlaceholderControlWidget
+import com.brendan.controlanything.ui.dashboard.widgets.SliderWidget
+import com.brendan.controlanything.ui.dashboard.widgets.ToggleWidget
 import com.brendan.controlanything.ui.dashboard.widgets.WidgetFrame
 import com.brendan.controlanything.ui.theme.ControlAnythingTheme
 
@@ -66,6 +69,8 @@ fun DashboardScreen(
         uiState = uiState,
         onWidgetMoved = viewModel::onWidgetMoved,
         onColumnCountChanged = viewModel::onColumnCountChanged,
+        onControlChanged = viewModel::onControlChanged,
+        onButtonPressed = viewModel::onButtonPressed,
         modifier = modifier,
     )
 }
@@ -76,6 +81,8 @@ private fun DashboardContent(
     uiState: DashboardUiState,
     onWidgetMoved: (String, GridPosition) -> Unit,
     onColumnCountChanged: (Int) -> Unit,
+    onControlChanged: (String, MqttValue) -> Unit,
+    onButtonPressed: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var isEditMode by remember { mutableStateOf(false) }
@@ -149,7 +156,28 @@ private fun DashboardContent(
                                     definition = output,
                                     value = uiState.outputValues[output.topic] as? MqttValue.Bool,
                                 )
-                                control != null -> PlaceholderControlWidget(control)
+                                control is ControlDef.Toggle -> ToggleWidget(
+                                    definition = control,
+                                    isOn = (uiState.controlValues[control.topic] as? MqttValue.Bool)?.value ?: false,
+                                    onToggle = { onControlChanged(control.topic, MqttValue.Bool(it)) },
+                                )
+                                control is ControlDef.Button -> ButtonWidget(
+                                    definition = control,
+                                    onPress = { onButtonPressed(control.topic) },
+                                )
+                                control is ControlDef.Slider -> SliderWidget(
+                                    definition = control,
+                                    value = (uiState.controlValues[control.topic] as? MqttValue.Number)?.value
+                                        ?: ((control.min + control.max) / 2f),
+                                    onValueChange = { onControlChanged(control.topic, MqttValue.Number(it)) },
+                                )
+                                control is ControlDef.Joystick -> JoystickWidget(
+                                    definition = control,
+                                    onValueChange = { x, y ->
+                                        onControlChanged(control.topicX, MqttValue.Number(x))
+                                        onControlChanged(control.topicY, MqttValue.Number(y))
+                                    },
+                                )
                                 else -> Unit
                             }
                         }
@@ -229,18 +257,22 @@ private fun fakeDeviceInfoForPreview() = DeviceInfo(
     controls = listOf(
         ControlDef.Slider("speed", "Speed", min = -1f, max = 1f),
         ControlDef.Toggle("headlights", "Headlights"),
+        ControlDef.Button("horn", "Horn"),
+        ControlDef.Joystick("drive_x", "drive_y", "Drive"),
     ),
     outputs = listOf(
         OutputDef.NumericReadout("battery", "Battery"),
-        OutputDef.LedIndicator("horn", "Horn"),
+        OutputDef.LedIndicator("status", "Status"),
     ),
 )
 
 private fun fakePositionsForPreview() = listOf(
     PlacedWidget("speed", GridPosition(col = 0, row = 0, colSpan = 2, rowSpan = 1)),
     PlacedWidget("headlights", GridPosition(col = 2, row = 0, colSpan = 1, rowSpan = 1)),
-    PlacedWidget("battery", GridPosition(col = 0, row = 1, colSpan = 2, rowSpan = 1)),
-    PlacedWidget("horn", GridPosition(col = 2, row = 1, colSpan = 1, rowSpan = 1)),
+    PlacedWidget("horn", GridPosition(col = 3, row = 0, colSpan = 1, rowSpan = 1)),
+    PlacedWidget("drive_x", GridPosition(col = 0, row = 1, colSpan = 2, rowSpan = 2)),
+    PlacedWidget("battery", GridPosition(col = 2, row = 1, colSpan = 2, rowSpan = 1)),
+    PlacedWidget("status", GridPosition(col = 2, row = 2, colSpan = 1, rowSpan = 1)),
 )
 
 @Preview(showBackground = true, heightDp = 640)
@@ -252,10 +284,16 @@ private fun DashboardScreenPreview() {
                 deviceInfo = fakeDeviceInfoForPreview(),
                 columnCount = 4,
                 positions = fakePositionsForPreview(),
-                outputValues = mapOf("battery" to MqttValue.Number(12.4f)),
+                outputValues = mapOf("battery" to MqttValue.Number(12.4f), "status" to MqttValue.Bool(true)),
+                controlValues = mapOf(
+                    "speed" to MqttValue.Number(0.2f),
+                    "headlights" to MqttValue.Bool(true),
+                ),
             ),
             onWidgetMoved = { _, _ -> },
             onColumnCountChanged = {},
+            onControlChanged = { _, _ -> },
+            onButtonPressed = {},
         )
     }
 }

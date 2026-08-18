@@ -6,6 +6,7 @@ import com.brendan.controlanything.data.mqtt.MqttRepository
 import com.brendan.controlanything.domain.grid.GridEngine
 import com.brendan.controlanything.domain.grid.GridPosition
 import com.brendan.controlanything.domain.grid.PlacedWidget
+import com.brendan.controlanything.domain.model.ControlDef
 import com.brendan.controlanything.domain.model.DeviceInfo
 import com.brendan.controlanything.domain.model.MqttValue
 import com.brendan.controlanything.domain.model.OutputDef
@@ -33,14 +34,16 @@ class DashboardViewModel @Inject constructor(
     private val columnCount = MutableStateFlow(DEFAULT_COLUMN_COUNT)
     private val positions = MutableStateFlow<List<PlacedWidget>>(emptyList())
     private val outputValues = MutableStateFlow<Map<String, MqttValue>>(emptyMap())
+    private val controlValues = MutableStateFlow<Map<String, MqttValue>>(emptyMap())
 
     val uiState: StateFlow<DashboardUiState> = combine(
         mqttRepository.deviceInfo,
         columnCount,
         positions,
         outputValues,
-    ) { deviceInfo, columnCount, positions, outputValues ->
-        DashboardUiState(deviceInfo, columnCount, positions, outputValues)
+        controlValues,
+    ) { deviceInfo, columnCount, positions, outputValues, controlValues ->
+        DashboardUiState(deviceInfo, columnCount, positions, outputValues, controlValues)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DashboardUiState())
 
     private var observeOutputsJob: Job? = null
@@ -53,6 +56,7 @@ class DashboardViewModel @Inject constructor(
                     lastSchemaHash = deviceInfo.schemaHash
                     placeWidgets(deviceInfo)
                     observeOutputs(deviceInfo)
+                    seedControlDefaults(deviceInfo)
                 }
             }
         }
@@ -96,5 +100,36 @@ class DashboardViewModel @Inject constructor(
     fun onColumnCountChanged(newColumnCount: Int) {
         positions.value = GridEngine.rescale(positions.value, columnCount.value, newColumnCount)
         columnCount.value = newColumnCount
+    }
+
+    /** Seeds a neutral starting value for every control - the app is the source of truth for what it last commanded. */
+    private fun seedControlDefaults(deviceInfo: DeviceInfo) {
+        val defaults = mutableMapOf<String, MqttValue>()
+        deviceInfo.controls.forEach { control ->
+            when (control) {
+                is ControlDef.Toggle -> defaults[control.topic] = MqttValue.Bool(false)
+                is ControlDef.Slider -> defaults[control.topic] = MqttValue.Number((control.min + control.max) / 2f)
+                is ControlDef.Joystick -> {
+                    defaults[control.topicX] = MqttValue.Number(0f)
+                    defaults[control.topicY] = MqttValue.Number(0f)
+                }
+                is ControlDef.Button -> Unit
+            }
+        }
+        controlValues.value = defaults
+    }
+
+    /** [topic] is a leaf name (e.g. a joystick axis); publishes are never retained for controls. */
+    fun onControlChanged(topic: String, value: MqttValue) {
+        controlValues.value = controlValues.value + (topic to value)
+        val payload = when (value) {
+            is MqttValue.Bool -> value.value.toString()
+            is MqttValue.Number -> value.value.toString()
+        }
+        mqttRepository.publish(topic, payload, retained = false)
+    }
+
+    fun onButtonPressed(topic: String) {
+        mqttRepository.publish(topic, "true", retained = false)
     }
 }

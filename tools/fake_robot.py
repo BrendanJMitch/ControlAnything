@@ -29,45 +29,42 @@ INFO_PAYLOAD = {
     "schema_hash": "demo1",
     "controls": [
         {
-            "topic": "lights",
+            "topic": ["lights"],
             "display_name": "Lights",
             "type": "bool",
-            "widget_type": "toggle",
+            "widget": {"type": "toggle"},
         },
         {
-            "topic": "horn",
+            "topic": ["horn"],
             "display_name": "Horn",
             "type": "bool",
-            "widget_type": "button",
+            "widget": {"type": "button"},
         },
         {
-            "topic": "speed",
+            "topic": ["speed"],
             "display_name": "Speed",
             "type": "float",
-            "widget_type": "slider",
-            "min": -1.0,
-            "max": 1.0,
+            "widget": {"type": "slider", "min": -1.0, "max": 4.0},
         },
         {
-            "topic_x": "drive_x",
-            "topic_y": "drive_y",
+            "topic": ["drive_x", "drive_y"],
             "display_name": "Drive",
             "type": "float",
-            "widget_type": "joystick",
+            "widget": {"type": "joystick"},
         },
     ],
     "outputs": [
         {
-            "topic": "battery_voltage",
+            "topic": ["battery_voltage"],
             "display_name": "Battery",
             "type": "float",
-            "widget_type": "numeric_readout",
+            "widget": {"type": "numeric_readout"},
         },
         {
-            "topic": "status_led",
+            "topic": ["status_led"],
             "display_name": "Status",
             "type": "bool",
-            "widget_type": "led_indicator",
+            "widget": {"type": "led_indicator"},
         },
     ],
 }
@@ -89,10 +86,14 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--host", default="localhost")
     parser.add_argument("--port", type=int, default=1883)
-    parser.add_argument("--interval", type=float, default=1.0, help="seconds between output updates")
+    parser.add_argument(
+        "--interval", type=float, default=1.0, help="seconds between output updates"
+    )
     args = parser.parse_args()
 
-    client = mqtt.Client(callback_api_version=mqtt.CallbackAPIVersion.VERSION2, client_id="fake-robot")
+    client = mqtt.Client(
+        callback_api_version=mqtt.CallbackAPIVersion.VERSION2, client_id="fake-robot"
+    )
     client.on_connect = on_connect
     client.on_message = on_message
     client.connect(args.host, args.port)
@@ -109,11 +110,19 @@ def main():
             battery_voltage += random.uniform(-0.02, 0.02)
             if battery_voltage < 10.5:
                 battery_voltage = 12.6
-            client.publish(f"{OUTPUTS_PREFIX}battery_voltage", f"{battery_voltage:.2f}", retain=True)
+            client.publish(
+                f"{OUTPUTS_PREFIX}battery_voltage",
+                f"{battery_voltage:.2f}",
+                retain=True,
+            )
 
             # Status LED blinks on a 2-second cycle.
             status_on = int(elapsed) % 2 == 0
-            client.publish(f"{OUTPUTS_PREFIX}status_led", "true" if status_on else "false", retain=True)
+            client.publish(
+                f"{OUTPUTS_PREFIX}status_led",
+                "true" if status_on else "false",
+                retain=True,
+            )
 
             print(f"-> battery_voltage={battery_voltage:.2f} status_led={status_on}")
             time.sleep(args.interval)
