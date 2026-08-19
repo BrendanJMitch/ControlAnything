@@ -2,11 +2,13 @@ package com.brendan.controlanything.ui.dashboard
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.brendan.controlanything.data.layout.LayoutRepository
 import com.brendan.controlanything.data.mqtt.MqttRepository
 import com.brendan.controlanything.domain.grid.GridEngine
 import com.brendan.controlanything.domain.grid.GridPosition
 import com.brendan.controlanything.domain.grid.PlacedWidget
 import com.brendan.controlanything.domain.model.ControlDef
+import com.brendan.controlanything.domain.model.DashboardOrientation
 import com.brendan.controlanything.domain.model.DeviceInfo
 import com.brendan.controlanything.domain.model.MqttValue
 import com.brendan.controlanything.domain.model.OutputDef
@@ -28,6 +30,7 @@ internal const val DEFAULT_COLUMN_COUNT = 4
 @HiltViewModel
 class DashboardViewModel @Inject constructor(
     private val mqttRepository: MqttRepository,
+    private val layoutRepository: LayoutRepository,
 ) : ViewModel() {
 
     private val columnCount = MutableStateFlow(DEFAULT_COLUMN_COUNT)
@@ -53,16 +56,34 @@ class DashboardViewModel @Inject constructor(
 
     private var observeOutputsJob: Job? = null
     private var lastSchemaHash: String? = null
+    private var currentProjectId: String? = null
 
     init {
         viewModelScope.launch {
             mqttRepository.deviceInfo.filterNotNull().collect { deviceInfo ->
                 if (deviceInfo.schemaHash != lastSchemaHash) {
                     lastSchemaHash = deviceInfo.schemaHash
-                    placeWidgets(deviceInfo)
+                    currentProjectId = deviceInfo.projectId
+                    loadOrInitializeLayout(deviceInfo)
                     observeOutputs(deviceInfo)
                     seedControlDefaults(deviceInfo)
                 }
+            }
+        }
+    }
+
+    /** Reuses a saved layout for this exact (projectId, schemaHash) if one exists, otherwise auto-places everything and saves that as the starting point. */
+    private fun loadOrInitializeLayout(deviceInfo: DeviceInfo) {
+        viewModelScope.launch {
+            val saved = layoutRepository.loadLayout(deviceInfo.projectId, deviceInfo.schemaHash)
+            if (saved != null) {
+                positions.value = saved.positions
+                columnCount.value = saved.columnCount
+                orientation.value = saved.orientation
+            } else {
+                placeWidgets(deviceInfo)
+                layoutRepository.saveWidgetPositions(deviceInfo.projectId, deviceInfo.schemaHash, positions.value)
+                layoutRepository.saveSettings(deviceInfo.projectId, deviceInfo.schemaHash, columnCount.value, orientation.value)
             }
         }
     }
@@ -102,15 +123,36 @@ class DashboardViewModel @Inject constructor(
     /** [newPosition] is assumed already validated (WidgetFrame checks collisions before calling this). */
     fun onWidgetMoved(key: String, newPosition: GridPosition) {
         positions.value = positions.value.map { if (it.key == key) it.copy(position = newPosition) else it }
+        val schemaHash = lastSchemaHash ?: return
+        val projectId = currentProjectId ?: return
+        val widget = positions.value.firstOrNull { it.key == key } ?: return
+        viewModelScope.launch { layoutRepository.saveWidgetPosition(projectId, schemaHash, widget) }
     }
 
     fun onColumnCountChanged(newColumnCount: Int) {
         positions.value = GridEngine.rescale(positions.value, columnCount.value, newColumnCount)
         columnCount.value = newColumnCount
+        persistPositionsAndSettings()
     }
 
     fun onOrientationChanged(newOrientation: DashboardOrientation) {
         orientation.value = newOrientation
+        persistSettings()
+    }
+
+    private fun persistSettings() {
+        val schemaHash = lastSchemaHash ?: return
+        val projectId = currentProjectId ?: return
+        viewModelScope.launch { layoutRepository.saveSettings(projectId, schemaHash, columnCount.value, orientation.value) }
+    }
+
+    private fun persistPositionsAndSettings() {
+        val schemaHash = lastSchemaHash ?: return
+        val projectId = currentProjectId ?: return
+        viewModelScope.launch {
+            layoutRepository.saveWidgetPositions(projectId, schemaHash, positions.value)
+            layoutRepository.saveSettings(projectId, schemaHash, columnCount.value, orientation.value)
+        }
     }
 
     /** Seeds a neutral starting value for every control - the app is the source of truth for what it last commanded. */

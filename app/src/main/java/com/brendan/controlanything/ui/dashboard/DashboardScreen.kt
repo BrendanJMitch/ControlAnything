@@ -49,6 +49,7 @@ import com.brendan.controlanything.domain.grid.GridPosition
 import com.brendan.controlanything.domain.grid.PlacedWidget
 import com.brendan.controlanything.domain.model.ButtonMode
 import com.brendan.controlanything.domain.model.ControlDef
+import com.brendan.controlanything.domain.model.DashboardOrientation
 import com.brendan.controlanything.domain.model.DeviceInfo
 import com.brendan.controlanything.domain.model.LedColor
 import com.brendan.controlanything.domain.model.MqttValue
