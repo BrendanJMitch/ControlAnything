@@ -23,7 +23,7 @@ fun NumericReadoutWidget(
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
-                text = value?.value?.let { "%.1f".format(it) } ?: "--",
+                text = value?.value?.let { "%.1f%s".format(it, definition.suffix) } ?: "--",
                 style = MaterialTheme.typography.headlineSmall,
             )
             Text(

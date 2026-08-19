@@ -18,7 +18,6 @@ import androidx.compose.ui.unit.dp
 import com.brendan.controlanything.domain.model.MqttValue
 import com.brendan.controlanything.domain.model.OutputDef
 
-private val ON_COLOR = Color(0xFF4CAF50)
 private val OFF_COLOR = Color(0xFF616161)
 
 @Composable
@@ -35,7 +34,7 @@ fun LedIndicatorWidget(
             Box(
                 modifier = Modifier
                     .size(20.dp)
-                    .background(if (value?.value == true) ON_COLOR else OFF_COLOR, CircleShape),
+                    .background(if (value?.value == true) Color(definition.color.argb) else OFF_COLOR, CircleShape),
             )
             Spacer(Modifier.height(4.dp))
             Text(

@@ -1,6 +1,7 @@
 package com.brendan.controlanything.data.mqtt
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonElement
 
 /**
  * DTOs mirroring the wire shape of the retained "info" topic exactly. Kept separate from the
@@ -35,4 +36,10 @@ data class WidgetJson(
     val type: String,
     val min: Double? = null,
     val max: Double? = null,
+    // Bool for a toggle's default, a number for a slider's - see InfoMapper for the split.
+    val default_value: JsonElement? = null,
+    val orientation: String? = null,
+    val color: String? = null,
+    val suffix: String? = null,
+    val mode: String? = null,
 )

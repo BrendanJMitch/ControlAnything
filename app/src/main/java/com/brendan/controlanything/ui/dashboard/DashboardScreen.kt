@@ -1,5 +1,9 @@
 package com.brendan.controlanything.ui.dashboard
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
+import android.content.pm.ActivityInfo
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -25,6 +29,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
@@ -33,6 +38,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
@@ -41,10 +47,13 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.brendan.controlanything.domain.grid.GridPosition
 import com.brendan.controlanything.domain.grid.PlacedWidget
+import com.brendan.controlanything.domain.model.ButtonMode
 import com.brendan.controlanything.domain.model.ControlDef
 import com.brendan.controlanything.domain.model.DeviceInfo
+import com.brendan.controlanything.domain.model.LedColor
 import com.brendan.controlanything.domain.model.MqttValue
 import com.brendan.controlanything.domain.model.OutputDef
+import com.brendan.controlanything.domain.model.SliderOrientation
 import com.brendan.controlanything.ui.dashboard.grid.DashboardGrid
 import com.brendan.controlanything.ui.dashboard.grid.gridPosition
 import com.brendan.controlanything.ui.dashboard.widgets.ButtonWidget
@@ -57,7 +66,7 @@ import com.brendan.controlanything.ui.dashboard.widgets.WidgetFrame
 import com.brendan.controlanything.ui.theme.ControlAnythingTheme
 
 private const val MIN_COLUMN_COUNT = 2
-private const val MAX_COLUMN_COUNT = 8
+private const val MAX_COLUMN_COUNT = 12
 
 @Composable
 fun DashboardScreen(
@@ -65,14 +74,39 @@ fun DashboardScreen(
     viewModel: DashboardViewModel = hiltViewModel(),
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
+    val context = LocalContext.current
+
+    // Auto-rotate doesn't work with a grid laid out for one screen dimension, so lock the
+    // Activity to whichever orientation is chosen while this screen is on-screen, and free it
+    // again on the way out rather than leaving it stuck on the last-locked orientation.
+    DisposableEffect(uiState.orientation) {
+        val activity = context.findActivity()
+        activity?.requestedOrientation = when (uiState.orientation) {
+            DashboardOrientation.PORTRAIT -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+            DashboardOrientation.LANDSCAPE -> ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        }
+        onDispose {
+            activity?.requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        }
+    }
+
     DashboardContent(
         uiState = uiState,
         onWidgetMoved = viewModel::onWidgetMoved,
         onColumnCountChanged = viewModel::onColumnCountChanged,
         onControlChanged = viewModel::onControlChanged,
-        onButtonPressed = viewModel::onButtonPressed,
+        onOrientationChanged = viewModel::onOrientationChanged,
         modifier = modifier,
     )
+}
+
+private fun Context.findActivity(): Activity? {
+    var context = this
+    while (context is ContextWrapper) {
+        if (context is Activity) return context
+        context = context.baseContext
+    }
+    return null
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -82,7 +116,7 @@ private fun DashboardContent(
     onWidgetMoved: (String, GridPosition) -> Unit,
     onColumnCountChanged: (Int) -> Unit,
     onControlChanged: (String, MqttValue) -> Unit,
-    onButtonPressed: (String) -> Unit,
+    onOrientationChanged: (DashboardOrientation) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     var isEditMode by remember { mutableStateOf(false) }
@@ -113,6 +147,27 @@ private fun DashboardContent(
                             text = { Text("Resize grid") },
                             onClick = {
                                 isResizeDialogOpen = true
+                                isMenuExpanded = false
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    if (uiState.orientation == DashboardOrientation.PORTRAIT) {
+                                        "Switch to landscape"
+                                    } else {
+                                        "Switch to portrait"
+                                    },
+                                )
+                            },
+                            onClick = {
+                                onOrientationChanged(
+                                    if (uiState.orientation == DashboardOrientation.PORTRAIT) {
+                                        DashboardOrientation.LANDSCAPE
+                                    } else {
+                                        DashboardOrientation.PORTRAIT
+                                    },
+                                )
                                 isMenuExpanded = false
                             },
                         )
@@ -163,12 +218,12 @@ private fun DashboardContent(
                                 )
                                 control is ControlDef.Button -> ButtonWidget(
                                     definition = control,
-                                    onPress = { onButtonPressed(control.topic) },
+                                    onValueChange = { onControlChanged(control.topic, MqttValue.Bool(it)) },
                                 )
                                 control is ControlDef.Slider -> SliderWidget(
                                     definition = control,
                                     value = (uiState.controlValues[control.topic] as? MqttValue.Number)?.value
-                                        ?: ((control.min + control.max) / 2f),
+                                        ?: control.defaultValue,
                                     onValueChange = { onControlChanged(control.topic, MqttValue.Number(it)) },
                                 )
                                 control is ControlDef.Joystick -> JoystickWidget(
@@ -255,14 +310,22 @@ private fun fakeDeviceInfoForPreview() = DeviceInfo(
     projectId = "preview_project",
     schemaHash = "preview",
     controls = listOf(
-        ControlDef.Slider("speed", "Speed", min = -1f, max = 1f),
-        ControlDef.Toggle("headlights", "Headlights"),
-        ControlDef.Button("horn", "Horn"),
+        ControlDef.Slider("speed", "Speed", min = -1f, max = 1f, defaultValue = 0f),
+        ControlDef.Toggle("headlights", "Headlights", defaultValue = true),
+        ControlDef.Button("horn", "Horn", mode = ButtonMode.STATE),
         ControlDef.Joystick("drive_x", "drive_y", "Drive"),
+        ControlDef.Slider(
+            "tilt",
+            "Tilt",
+            min = 0f,
+            max = 180f,
+            defaultValue = 90f,
+            orientation = SliderOrientation.VERTICAL,
+        ),
     ),
     outputs = listOf(
-        OutputDef.NumericReadout("battery", "Battery"),
-        OutputDef.LedIndicator("status", "Status"),
+        OutputDef.NumericReadout("battery", "Battery", suffix = "V"),
+        OutputDef.LedIndicator("status", "Status", color = LedColor.CYAN),
     ),
 )
 
@@ -273,6 +336,7 @@ private fun fakePositionsForPreview() = listOf(
     PlacedWidget("drive_x", GridPosition(col = 0, row = 1, colSpan = 2, rowSpan = 2)),
     PlacedWidget("battery", GridPosition(col = 2, row = 1, colSpan = 2, rowSpan = 1)),
     PlacedWidget("status", GridPosition(col = 2, row = 2, colSpan = 1, rowSpan = 1)),
+    PlacedWidget("tilt", GridPosition(col = 3, row = 1, colSpan = 1, rowSpan = 2)),
 )
 
 @Preview(showBackground = true, heightDp = 640)
@@ -288,12 +352,13 @@ private fun DashboardScreenPreview() {
                 controlValues = mapOf(
                     "speed" to MqttValue.Number(0.2f),
                     "headlights" to MqttValue.Bool(true),
+                    "tilt" to MqttValue.Number(90f),
                 ),
             ),
             onWidgetMoved = { _, _ -> },
             onColumnCountChanged = {},
             onControlChanged = { _, _ -> },
-            onButtonPressed = {},
+            onOrientationChanged = {},
         )
     }
 }

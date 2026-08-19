@@ -10,4 +10,12 @@ data class DashboardUiState(
     val positions: List<PlacedWidget> = emptyList(),
     val outputValues: Map<String, MqttValue> = emptyMap(),
     val controlValues: Map<String, MqttValue> = emptyMap(),
+    val orientation: DashboardOrientation = DashboardOrientation.PORTRAIT,
 )
+
+/**
+ * Auto-rotate doesn't work with a grid laid out for one screen dimension, so the dashboard locks
+ * the Activity to whichever orientation is chosen here instead. Saved per dashboard alongside
+ * column count once Room persistence lands (M6).
+ */
+enum class DashboardOrientation { PORTRAIT, LANDSCAPE }

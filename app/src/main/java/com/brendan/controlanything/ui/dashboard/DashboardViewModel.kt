@@ -10,6 +10,7 @@ import com.brendan.controlanything.domain.model.ControlDef
 import com.brendan.controlanything.domain.model.DeviceInfo
 import com.brendan.controlanything.domain.model.MqttValue
 import com.brendan.controlanything.domain.model.OutputDef
+import com.brendan.controlanything.domain.model.SliderOrientation
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.Job
@@ -23,8 +24,6 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 internal const val DEFAULT_COLUMN_COUNT = 4
-private const val DEFAULT_COL_SPAN = 2
-private const val DEFAULT_ROW_SPAN = 1
 
 @HiltViewModel
 class DashboardViewModel @Inject constructor(
@@ -35,15 +34,21 @@ class DashboardViewModel @Inject constructor(
     private val positions = MutableStateFlow<List<PlacedWidget>>(emptyList())
     private val outputValues = MutableStateFlow<Map<String, MqttValue>>(emptyMap())
     private val controlValues = MutableStateFlow<Map<String, MqttValue>>(emptyMap())
+    private val orientation = MutableStateFlow(DashboardOrientation.PORTRAIT)
 
+    // kotlinx.coroutines' typed combine() only goes up to 5 flows - nest to stay type-safe at 6.
     val uiState: StateFlow<DashboardUiState> = combine(
-        mqttRepository.deviceInfo,
-        columnCount,
-        positions,
-        outputValues,
+        combine(
+            mqttRepository.deviceInfo,
+            columnCount,
+            positions,
+            outputValues,
+            ::CoreState,
+        ),
         controlValues,
-    ) { deviceInfo, columnCount, positions, outputValues, controlValues ->
-        DashboardUiState(deviceInfo, columnCount, positions, outputValues, controlValues)
+        orientation,
+    ) { core, controlValues, orientation ->
+        DashboardUiState(core.deviceInfo, core.columnCount, core.positions, core.outputValues, controlValues, orientation)
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DashboardUiState())
 
     private var observeOutputsJob: Job? = null
@@ -64,9 +69,11 @@ class DashboardViewModel @Inject constructor(
 
     private fun placeWidgets(deviceInfo: DeviceInfo) {
         val placed = mutableListOf<PlacedWidget>()
-        val keys = deviceInfo.controls.map { it.topic } + deviceInfo.outputs.map { it.topic }
-        keys.forEach { key ->
-            val position = GridEngine.nextFreeCell(placed, columnCount.value, DEFAULT_COL_SPAN, DEFAULT_ROW_SPAN)
+        val entries = deviceInfo.controls.map { it.topic to it.defaultSpan() } +
+            deviceInfo.outputs.map { it.topic to it.defaultSpan() }
+        entries.forEach { (key, span) ->
+            val (colSpan, rowSpan) = span
+            val position = GridEngine.nextFreeCell(placed, columnCount.value, colSpan, rowSpan)
             placed += PlacedWidget(key, position)
         }
         positions.value = placed
@@ -102,13 +109,17 @@ class DashboardViewModel @Inject constructor(
         columnCount.value = newColumnCount
     }
 
+    fun onOrientationChanged(newOrientation: DashboardOrientation) {
+        orientation.value = newOrientation
+    }
+
     /** Seeds a neutral starting value for every control - the app is the source of truth for what it last commanded. */
     private fun seedControlDefaults(deviceInfo: DeviceInfo) {
         val defaults = mutableMapOf<String, MqttValue>()
         deviceInfo.controls.forEach { control ->
             when (control) {
-                is ControlDef.Toggle -> defaults[control.topic] = MqttValue.Bool(false)
-                is ControlDef.Slider -> defaults[control.topic] = MqttValue.Number((control.min + control.max) / 2f)
+                is ControlDef.Toggle -> defaults[control.topic] = MqttValue.Bool(control.defaultValue)
+                is ControlDef.Slider -> defaults[control.topic] = MqttValue.Number(control.defaultValue)
                 is ControlDef.Joystick -> {
                     defaults[control.topicX] = MqttValue.Number(0f)
                     defaults[control.topicY] = MqttValue.Number(0f)
@@ -128,8 +139,28 @@ class DashboardViewModel @Inject constructor(
         }
         mqttRepository.publish(topic, payload, retained = false)
     }
-
-    fun onButtonPressed(topic: String) {
-        mqttRepository.publish(topic, "true", retained = false)
-    }
 }
+
+/** (colSpan, rowSpan) a freshly-placed widget starts at, before the user resizes it manually. */
+private fun ControlDef.defaultSpan(): Pair<Int, Int> = when (this) {
+    is ControlDef.Toggle -> 1 to 1
+    is ControlDef.Button -> 2 to 1
+    is ControlDef.Slider -> when (orientation) {
+        SliderOrientation.HORIZONTAL -> 2 to 1
+        SliderOrientation.VERTICAL -> 1 to 2
+    }
+    is ControlDef.Joystick -> 2 to 2
+}
+
+private fun OutputDef.defaultSpan(): Pair<Int, Int> = when (this) {
+    is OutputDef.NumericReadout -> 2 to 1
+    is OutputDef.LedIndicator -> 1 to 1
+}
+
+/** Intermediate holder so the 6-flow combine above can stay type-safe via nesting. */
+private data class CoreState(
+    val deviceInfo: DeviceInfo?,
+    val columnCount: Int,
+    val positions: List<PlacedWidget>,
+    val outputValues: Map<String, MqttValue>,
+)
