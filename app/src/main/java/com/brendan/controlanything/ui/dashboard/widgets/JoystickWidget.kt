@@ -40,6 +40,7 @@ fun JoystickWidget(
     modifier: Modifier = Modifier,
 ) {
     var thumbOffset by remember(definition.topicX, definition.topicY) { mutableStateOf(Offset.Zero) }
+    var touchOffset by remember(definition.topicX, definition.topicY) { mutableStateOf(Offset.Zero) }
     var radiusPx by remember { mutableFloatStateOf(0f) }
     val thumbSizeDp = with(LocalDensity.current) { (radiusPx * THUMB_TO_RADIUS_RATIO).toDp() }
 
@@ -54,9 +55,9 @@ fun JoystickWidget(
                     onDrag = { change, dragAmount ->
                         change.consume()
                         if (radiusPx <= 0f) return@detectDragGestures
-                        val candidate = thumbOffset + dragAmount
-                        val distance = candidate.getDistance()
-                        thumbOffset = if (distance > radiusPx) candidate * (radiusPx / distance) else candidate
+                        touchOffset = touchOffset + dragAmount
+                        val distance = touchOffset.getDistance()
+                        thumbOffset = if (distance > radiusPx) touchOffset * (radiusPx / distance) else touchOffset
                         // Screen y grows downward; up should mean "forward" (positive y) for driving.
                         val normalizedX = (thumbOffset.x / radiusPx).coerceIn(-AXIS_RANGE, AXIS_RANGE)
                         val normalizedY = (-thumbOffset.y / radiusPx).coerceIn(-AXIS_RANGE, AXIS_RANGE)
@@ -64,6 +65,7 @@ fun JoystickWidget(
                     },
                     onDragEnd = {
                         thumbOffset = Offset.Zero
+                        touchOffset = Offset.Zero
                         onValueChange(0f, 0f)
                     },
                 )
