@@ -61,4 +61,32 @@ object GridEngine {
             row++
         }
     }
+
+    /**
+     * Reconciles a device's current widget set (`key` to `(colSpan, rowSpan)`) against
+     * [saved] positions keyed the same way. An entry with a saved position keeps it exactly
+     * as-is, un-collision-checked (a saved layout may already contain the deliberate overlaps
+     * a resolution change leaves for the user to fix). An entry with no saved position is
+     * auto-placed via [nextFreeCell] against every saved widget, regardless of where either
+     * entry falls in [entries] - placing saved widgets first in a separate pass, before any
+     * auto-placement, is what makes the result independent of list order.
+     */
+    fun reconcile(
+        entries: List<Pair<String, Pair<Int, Int>>>,
+        saved: Map<String, PlacedWidget>,
+        columnCount: Int,
+    ): List<PlacedWidget> {
+        val reconciled = mutableListOf<PlacedWidget>()
+        val unplaced = mutableListOf<Pair<String, Pair<Int, Int>>>()
+        entries.forEach { entry ->
+            val existing = saved[entry.first]
+            if (existing != null) reconciled += existing else unplaced += entry
+        }
+        unplaced.forEach { (key, span) ->
+            val (colSpan, rowSpan) = span
+            val position = nextFreeCell(reconciled, columnCount, colSpan, rowSpan)
+            reconciled += PlacedWidget(key, position)
+        }
+        return reconciled
+    }
 }

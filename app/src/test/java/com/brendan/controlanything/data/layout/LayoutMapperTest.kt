@@ -12,10 +12,9 @@ class LayoutMapperTest {
     @Test
     fun `PlacedWidget round-trips through an entity unchanged`() {
         val widget = PlacedWidget("speed", GridPosition(col = 1, row = 2, colSpan = 2, rowSpan = 1))
-        val entity = widget.toEntity(projectId = "proj", schemaHash = "hash")
+        val entity = widget.toEntity(projectId = "proj")
 
         assertEquals("proj", entity.projectId)
-        assertEquals("hash", entity.schemaHash)
         assertEquals("speed", entity.topicKey)
         assertEquals(1, entity.col)
         assertEquals(2, entity.row)
@@ -38,7 +37,6 @@ class LayoutMapperTest {
     fun `entity to domain preserves the grid position exactly`() {
         val entity = PlacedWidgetEntity(
             projectId = "proj",
-            schemaHash = "hash",
             topicKey = "battery",
             col = 3,
             row = 0,

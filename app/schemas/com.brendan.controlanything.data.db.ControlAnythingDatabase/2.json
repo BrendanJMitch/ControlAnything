@@ -1,0 +1,92 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 2,
+    "identityHash": "f93f8a6f5166e854f43fda1ccf8516b6",
+    "entities": [
+      {
+        "tableName": "placed_widgets",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`projectId` TEXT NOT NULL, `topicKey` TEXT NOT NULL, `col` INTEGER NOT NULL, `row` INTEGER NOT NULL, `colSpan` INTEGER NOT NULL, `rowSpan` INTEGER NOT NULL, PRIMARY KEY(`projectId`, `topicKey`))",
+        "fields": [
+          {
+            "fieldPath": "projectId",
+            "columnName": "projectId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "topicKey",
+            "columnName": "topicKey",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "col",
+            "columnName": "col",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "row",
+            "columnName": "row",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "colSpan",
+            "columnName": "colSpan",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "rowSpan",
+            "columnName": "rowSpan",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "projectId",
+            "topicKey"
+          ]
+        }
+      },
+      {
+        "tableName": "dashboard_settings",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`projectId` TEXT NOT NULL, `columnCount` INTEGER NOT NULL, `orientation` TEXT NOT NULL, PRIMARY KEY(`projectId`))",
+        "fields": [
+          {
+            "fieldPath": "projectId",
+            "columnName": "projectId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "columnCount",
+            "columnName": "columnCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "orientation",
+            "columnName": "orientation",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "projectId"
+          ]
+        }
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'f93f8a6f5166e854f43fda1ccf8516b6')"
+    ]
+  }
+}

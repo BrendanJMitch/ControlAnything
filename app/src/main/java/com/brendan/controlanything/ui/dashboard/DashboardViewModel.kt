@@ -55,16 +55,16 @@ class DashboardViewModel @Inject constructor(
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), DashboardUiState())
 
     private var observeOutputsJob: Job? = null
-    private var lastSchemaHash: String? = null
+    private var lastDeviceInfo: DeviceInfo? = null
     private var currentProjectId: String? = null
 
     init {
         viewModelScope.launch {
             mqttRepository.deviceInfo.filterNotNull().collect { deviceInfo ->
-                if (deviceInfo.schemaHash != lastSchemaHash) {
-                    lastSchemaHash = deviceInfo.schemaHash
+                if (deviceInfo != lastDeviceInfo) {
+                    lastDeviceInfo = deviceInfo
                     currentProjectId = deviceInfo.projectId
-                    loadOrInitializeLayout(deviceInfo)
+                    reconcileLayout(deviceInfo)
                     observeOutputs(deviceInfo)
                     seedControlDefaults(deviceInfo)
                 }
@@ -72,32 +72,31 @@ class DashboardViewModel @Inject constructor(
         }
     }
 
-    /** Reuses a saved layout for this exact (projectId, schemaHash) if one exists, otherwise auto-places everything and saves that as the starting point. */
-    private fun loadOrInitializeLayout(deviceInfo: DeviceInfo) {
+    /**
+     * The `info` topic is the source of truth on every (re)connect. For each control/output it
+     * declares, reuses that topic's saved position if one exists for this project; otherwise
+     * places it fresh via [GridEngine.reconcile]. A topic that no longer appears here just
+     * leaves its old saved row unused - no migration/remap step needed. Persists the reconciled
+     * result immediately so a freshly-placed widget is remembered from this point on.
+     */
+    private fun reconcileLayout(deviceInfo: DeviceInfo) {
         viewModelScope.launch {
-            val saved = layoutRepository.loadLayout(deviceInfo.projectId, deviceInfo.schemaHash)
-            if (saved != null) {
-                positions.value = saved.positions
-                columnCount.value = saved.columnCount
-                orientation.value = saved.orientation
-            } else {
-                placeWidgets(deviceInfo)
-                layoutRepository.saveWidgetPositions(deviceInfo.projectId, deviceInfo.schemaHash, positions.value)
-                layoutRepository.saveSettings(deviceInfo.projectId, deviceInfo.schemaHash, columnCount.value, orientation.value)
-            }
-        }
-    }
+            val saved = layoutRepository.loadLayout(deviceInfo.projectId)
+            val savedByKey = saved?.positions?.associateBy { it.key } ?: emptyMap()
+            val newColumnCount = saved?.columnCount ?: DEFAULT_COLUMN_COUNT
+            val newOrientation = saved?.orientation ?: DashboardOrientation.PORTRAIT
 
-    private fun placeWidgets(deviceInfo: DeviceInfo) {
-        val placed = mutableListOf<PlacedWidget>()
-        val entries = deviceInfo.controls.map { it.topic to it.defaultSpan() } +
-            deviceInfo.outputs.map { it.topic to it.defaultSpan() }
-        entries.forEach { (key, span) ->
-            val (colSpan, rowSpan) = span
-            val position = GridEngine.nextFreeCell(placed, columnCount.value, colSpan, rowSpan)
-            placed += PlacedWidget(key, position)
+            val entries = deviceInfo.controls.map { it.topic to it.defaultSpan() } +
+                deviceInfo.outputs.map { it.topic to it.defaultSpan() }
+            val reconciled = GridEngine.reconcile(entries, savedByKey, newColumnCount)
+
+            positions.value = reconciled
+            columnCount.value = newColumnCount
+            orientation.value = newOrientation
+
+            layoutRepository.saveWidgetPositions(deviceInfo.projectId, reconciled)
+            layoutRepository.saveSettings(deviceInfo.projectId, newColumnCount, newOrientation)
         }
-        positions.value = placed
     }
 
     private fun observeOutputs(deviceInfo: DeviceInfo) {
@@ -123,10 +122,9 @@ class DashboardViewModel @Inject constructor(
     /** [newPosition] is assumed already validated (WidgetFrame checks collisions before calling this). */
     fun onWidgetMoved(key: String, newPosition: GridPosition) {
         positions.value = positions.value.map { if (it.key == key) it.copy(position = newPosition) else it }
-        val schemaHash = lastSchemaHash ?: return
         val projectId = currentProjectId ?: return
         val widget = positions.value.firstOrNull { it.key == key } ?: return
-        viewModelScope.launch { layoutRepository.saveWidgetPosition(projectId, schemaHash, widget) }
+        viewModelScope.launch { layoutRepository.saveWidgetPosition(projectId, widget) }
     }
 
     fun onColumnCountChanged(newColumnCount: Int) {
@@ -141,17 +139,15 @@ class DashboardViewModel @Inject constructor(
     }
 
     private fun persistSettings() {
-        val schemaHash = lastSchemaHash ?: return
         val projectId = currentProjectId ?: return
-        viewModelScope.launch { layoutRepository.saveSettings(projectId, schemaHash, columnCount.value, orientation.value) }
+        viewModelScope.launch { layoutRepository.saveSettings(projectId, columnCount.value, orientation.value) }
     }
 
     private fun persistPositionsAndSettings() {
-        val schemaHash = lastSchemaHash ?: return
         val projectId = currentProjectId ?: return
         viewModelScope.launch {
-            layoutRepository.saveWidgetPositions(projectId, schemaHash, positions.value)
-            layoutRepository.saveSettings(projectId, schemaHash, columnCount.value, orientation.value)
+            layoutRepository.saveWidgetPositions(projectId, positions.value)
+            layoutRepository.saveSettings(projectId, columnCount.value, orientation.value)
         }
     }
 

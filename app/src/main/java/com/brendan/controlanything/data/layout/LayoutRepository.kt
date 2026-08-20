@@ -10,12 +10,16 @@ data class SavedLayout(
 )
 
 interface LayoutRepository {
-    /** Null if nothing has been saved yet for this (projectId, schemaHash) pair. */
-    suspend fun loadLayout(projectId: String, schemaHash: String): SavedLayout?
+    /**
+     * Whatever's been saved so far for this project, if anything - positions may be a sub/superset
+     * of the project's current widget set, since a topic's saved position is kept even after the
+     * topic itself disappears from a later firmware schema (it simply goes unused).
+     */
+    suspend fun loadLayout(projectId: String): SavedLayout?
 
-    suspend fun saveWidgetPosition(projectId: String, schemaHash: String, widget: PlacedWidget)
+    suspend fun saveWidgetPosition(projectId: String, widget: PlacedWidget)
 
-    suspend fun saveWidgetPositions(projectId: String, schemaHash: String, widgets: List<PlacedWidget>)
+    suspend fun saveWidgetPositions(projectId: String, widgets: List<PlacedWidget>)
 
-    suspend fun saveSettings(projectId: String, schemaHash: String, columnCount: Int, orientation: DashboardOrientation)
+    suspend fun saveSettings(projectId: String, columnCount: Int, orientation: DashboardOrientation)
 }

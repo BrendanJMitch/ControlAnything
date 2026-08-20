@@ -6,8 +6,8 @@ import androidx.room.Upsert
 
 @Dao
 interface DashboardLayoutDao {
-    @Query("SELECT * FROM placed_widgets WHERE projectId = :projectId AND schemaHash = :schemaHash")
-    suspend fun getWidgets(projectId: String, schemaHash: String): List<PlacedWidgetEntity>
+    @Query("SELECT * FROM placed_widgets WHERE projectId = :projectId")
+    suspend fun getWidgets(projectId: String): List<PlacedWidgetEntity>
 
     @Upsert
     suspend fun upsertWidget(widget: PlacedWidgetEntity)
@@ -15,8 +15,8 @@ interface DashboardLayoutDao {
     @Upsert
     suspend fun upsertWidgets(widgets: List<PlacedWidgetEntity>)
 
-    @Query("SELECT * FROM dashboard_settings WHERE projectId = :projectId AND schemaHash = :schemaHash")
-    suspend fun getSettings(projectId: String, schemaHash: String): DashboardSettingsEntity?
+    @Query("SELECT * FROM dashboard_settings WHERE projectId = :projectId")
+    suspend fun getSettings(projectId: String): DashboardSettingsEntity?
 
     @Upsert
     suspend fun upsertSettings(settings: DashboardSettingsEntity)

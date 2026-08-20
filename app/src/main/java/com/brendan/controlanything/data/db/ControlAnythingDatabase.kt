@@ -5,7 +5,7 @@ import androidx.room.RoomDatabase
 
 @Database(
     entities = [PlacedWidgetEntity::class, DashboardSettingsEntity::class],
-    version = 1,
+    version = 2,
 )
 abstract class ControlAnythingDatabase : RoomDatabase() {
     abstract fun dashboardLayoutDao(): DashboardLayoutDao

@@ -6,9 +6,8 @@ import com.brendan.controlanything.domain.grid.PlacedWidget
 import com.brendan.controlanything.domain.model.DashboardOrientation
 
 /** Pulled out from RoomLayoutRepository so this mapping is unit-testable without a real database. */
-fun PlacedWidget.toEntity(projectId: String, schemaHash: String) = PlacedWidgetEntity(
+fun PlacedWidget.toEntity(projectId: String) = PlacedWidgetEntity(
     projectId = projectId,
-    schemaHash = schemaHash,
     topicKey = key,
     col = position.col,
     row = position.row,

@@ -24,7 +24,11 @@ abstract class DatabaseModule {
         @Provides
         @Singleton
         fun provideDatabase(@ApplicationContext context: Context): ControlAnythingDatabase =
-            Room.databaseBuilder(context, ControlAnythingDatabase::class.java, "control_anything.db").build()
+            Room.databaseBuilder(context, ControlAnythingDatabase::class.java, "control_anything.db")
+                // Saved layouts are a rearrangeable local cache, not irreplaceable data - fine to
+                // drop and recreate on a schema bump rather than writing a real Migration.
+                .fallbackToDestructiveMigration(dropAllTables = true)
+                .build()
 
         @Provides
         fun provideDashboardLayoutDao(database: ControlAnythingDatabase): DashboardLayoutDao =

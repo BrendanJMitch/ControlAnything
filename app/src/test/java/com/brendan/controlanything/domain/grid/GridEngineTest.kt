@@ -126,4 +126,39 @@ class GridEngineTest {
         val position = GridEngine.nextFreeCell(existing, columnCount = 4, colSpan = 2, rowSpan = 1)
         assertEquals(GridPosition(0, 1, 2, 1), position)
     }
+
+    @Test
+    fun `reconcile keeps every saved position exactly as-is`() {
+        val saved = mapOf(
+            "a" to PlacedWidget("a", GridPosition(0, 0, 2, 1)),
+            "b" to PlacedWidget("b", GridPosition(2, 0, 2, 1)),
+        )
+        val entries = listOf("a" to (2 to 1), "b" to (2 to 1))
+        val result = GridEngine.reconcile(entries, saved, columnCount = 4)
+        assertEquals(listOf(saved.getValue("a"), saved.getValue("b")), result)
+    }
+
+    @Test
+    fun `reconcile auto-places a brand-new entry without colliding with a saved one`() {
+        val saved = mapOf("existing" to PlacedWidget("existing", GridPosition(0, 0, 2, 1)))
+        val entries = listOf("new" to (2 to 1), "existing" to (2 to 1))
+        val result = GridEngine.reconcile(entries, saved, columnCount = 4)
+        assertFalse(GridEngine.overlaps(result.first { it.key == "new" }.position, result.first { it.key == "existing" }.position))
+    }
+
+    @Test
+    fun `reconcile is unaffected by whether the new entry comes before or after the saved one`() {
+        val saved = mapOf("existing" to PlacedWidget("existing", GridPosition(0, 0, 2, 1)))
+        val newFirst = GridEngine.reconcile(listOf("new" to (2 to 1), "existing" to (2 to 1)), saved, columnCount = 4)
+        val newLast = GridEngine.reconcile(listOf("existing" to (2 to 1), "new" to (2 to 1)), saved, columnCount = 4)
+        assertEquals(newFirst.toSet(), newLast.toSet())
+    }
+
+    @Test
+    fun `reconcile with an empty saved map behaves like fresh auto-placement`() {
+        val entries = listOf("a" to (2 to 1), "b" to (2 to 1))
+        val result = GridEngine.reconcile(entries, emptyMap(), columnCount = 4)
+        assertEquals(GridPosition(0, 0, 2, 1), result[0].position)
+        assertEquals(GridPosition(2, 0, 2, 1), result[1].position)
+    }
 }
